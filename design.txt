@@ -1,0 +1,304 @@
+MSP Assembler Design Document (eeeek!)
+
+DISCLAIMER! I have not turned into a Visual Basic interface programming geek
+who would rather enjoy writing documentation and using Microsoft Office
+instead of programming AI and playing Civilization. This is not a traditional
+design document, it's an aimless rambling of things not to be forgotten while
+developing this program.
+
+TABLE OF CONTENTS:
+
+1... Introduction
+1.1. History about MSP Assembler
+1.2. Compatibility and design issues
+2... MSP Assembler functionality
+2.1. Features
+2.2. Command line arguments
+2.3. Assembler statements
+3... Source code organization
+
+
+1. Introduction
+
+1.1. History about MSP Assembler
+
+Stubbscroll is in need of better development tools for the Commodore 64 and
+SuperCPU (for forthcoming projects like Civilization), so he has decided to
+create an assembler for a start.
+
+1.2. Compatibility and design issues
+
+There exist a number of assemblers already for the Commodore 64. Here's a
+summary of their most important commands:
+
+Turbo Assembler
+
+*= <addr>       Organize the program code at a given memory address
+.text "string"  A string
+.byte <val,...> One or more byte values
+.word <val,...> One or more word values
+.org <word>     Set relative code generation address
+<name>=<val>    Set a constant
+<name>          Define a label
+*               Symbol for current address, can be read
+; <comment>     Comment
+< <addr>        Get low byte from a 16-bits address
+> <addr>        Get high byte from a 16-bits address
+
+Examples:
+
+*=$4000                                 Organize code at $4000
+.text "Lurid+Tricycle did it again"     This string is entered
+.byte 9,128,9,128,193,192,205,56,48     These bytes are entered
+.word start+6,init+3                    These words are entered
+maxcol=10                               Define a constant
+init                                    Define a label
+bne *-2                                 Branches to current address-2 if
+                                        not equal
+; This code is cursed                   Comments left by the programmer
+lda #<irq1                              Get low byte from label irq1
+lda #>irq1                              Get high byte from label irq1
+
+OK, there are also other assemblers, but I don't know much about them. Here
+are some other frequently occuring commands in other assemblers:
+
+<name> equ <val>                Set a constant
+dc.b | dfb | .db                One or more byte values
+dc.w | dfw | .dw                One or more word values
+.asc                            A string
+<name:> | <:name>               Define a label
+<label$>                        Define a local label, name can be reused
+@<addr>                         Force 24-bits addressing on a 65816
+^<addr>                         Get high 8 bits from a 24-bits address
+!<addr>                         Get low 16 bits from a 24-bits address
+
+2... MSP Assembler functionality
+
+M'kay, this chapter defines the functionality of the MSP Assembler.
+
+2.1. Features
+
+- Generate code for the 6502, 6510 and 65816 processors
+- Convert non-reachable branches into a combination of an inverted branch and
+  a JMP instruction
+- Supports two kinds of local labels
+- Macro expansion and include files
+- Generate relocatable code
+
+2.2. Command line arguments
+
+MSPASM [options] <input file(s)> <output file>
+
+Options:
+
+-c1             Generate code for the 6502 processor (default)
+-c2             Generate code for the 6510 processor
+-c3             Generate code for the 65816 processor
+-r              Generate relocatable code
+-o<addr>        Organize code at given memory address
+-t              Turbo Assembler compatibility mode, only allows commands from
+                this assembler
+
+2.3. Assembler statements
+
+The assembler supports the following commands:
+
+Choose processor
+
+        .processor ( 6502 | 6510 | 65816 )
+        processor ( 6502 | 6510 | 65816 )
+
+Organize code at a given memory address
+
+        *=<addr>
+        org <addr>
+
+Set "relative code generation address"
+
+        #rorg <addr>
+
+        Code will be generated relative to this address.
+
+        #rend
+
+        End of relative code generation.
+
+        .org <addr>
+
+        Code will be generated to the difference of the current address (*)
+        and the address given! (Tricky, but that's Turbo Assembler)
+
+Constants
+
+        <name> equ <val>
+        <name>=<val>
+
+        Define a normal numeric constant
+
+        #define <NAME> <contents>
+        #define <NAME(X,...)> <contents>
+
+        Define a macro, as in C (full support for parameters, string merge
+        etc).
+
+Byte data
+
+        dc.b | dfb | .byte | .db x [,x] etc
+
+        x can be dec (val), hex ($hal), bin (%val) or text ("string").
+        Different types can be mixed.
+
+Word data
+
+        dc.w | dfw | .word | .dw
+
+        x can be as above, except text.
+
+Double-word or long data
+
+        dc.l | dfl | .long | .dl
+
+Text
+
+        .text
+
+        This is essentially another alias for byte data.
+
+        .asc
+
+        Petascii
+
+        .scr
+
+        C64 screen codes
+
+Labels
+
+        label[:]
+        :label
+
+        A normal label
+
+        label$
+
+        A local label. The name can be reused. If the assembler encounters
+        such a name, it will search in both directions from the current
+        address after this name, and take the closest hit. [check with
+        other C64 assemblers on the exact behaviour]
+
+        -, --, ---, +, ++, +++
+
+        Local label. Consult other c64 assemblers for the exact behaviour.
+        Forward and backward temporary labels
+
+Comment
+
+        ; <comment>
+
+Expression syntaxes:
+
+        *
+
+        Current address (can both be set or read). When read, it's the address
+        where the current instruction begins. For example, JMP * jumps to
+        itself.
+
+        @<addr>
+
+        Force long addressing (65816 processor only)
+
+        < <addr>
+
+        Get low byte from a 16-bits address
+
+        > <addr>
+
+        Get high byte from a 16-bits address
+
+        ^ <addr>
+
+        Get upper 8 bits from a 24-bits address
+
+        ! <addr>
+
+        Get lower 16 bits from a 24-bits address. Also useful for forcing
+        16-bits addressing mode for zero-page access
+
+        + - / * ( )
+
+        Mathematical operators for integers
+
+        $<val>
+
+        Hexadecimal value
+
+        %<val>
+
+        Binary value
+        
+
+Examples:
+
+dc.b "text",13  Defines the text "text", followed by ascii 13 (return)
+
+<$111           Returns $11 (byte)
+!$56            Returns $0056 (word)
+sta !2,x        Generates sta $0002,x (forcing word type)
+10/7*100        Returns 100. If you wanted the value 142, rewrite as
+                10*100/7, because of the integer calculation involved.
+@$1234          Returns $001234 (24-bits)
+lda #^bank      Returns upper 8 bits of bank (for example, for setting
+                the bank addresses on the 65816).
+
+Macro example: Implements a simple shift left operation.
+
+#define SHL(x)  LDX #x\
+-               ASL\
+                DEX\
+                BNE -
+
+Definitions:
+
+<addr>          A memory address (16 or 24 bits, depending on the chosen
+                processor).
+<comment>       Comment left by the programmer.
+<val>           Numeric expression
+
+3... Source code organization
+
+mspasm.c        Main, interpretation of command line arguments
+prepro.c        Preprocessor for include files and macros
+system.c        System routines (file access, memory maintenance etc)
+parser.c        Parse input file into tokens
+assemble.c      Interprets tokens and generates code (the assembling)
+
+Flow chart:
+
++------------------+
+| Read input files |
++------------------+
+         |
+
++-------------------+
+| Expand macros and |
+|  include include  | <--+
+|        files      |    |
++-------------------+    | If something is unexpanded, jump here
+         |               |
+         +---------------+
+         |
++-------------------+
+| Parse input files | <--+
+|    into tokens    |    | 
++-------------------+    |
+         |               |
++-------------------+    |
+| Generate code and |    |
+| resolve addresses |    |
++-------------------+    | If there are still unresolved addresses, do 
+         |               | another pass
+         +---------------+
+         |
++-------------------+
+| Save object code  |
++-------------------+
